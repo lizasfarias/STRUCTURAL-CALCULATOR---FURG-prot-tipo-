@@ -51,15 +51,13 @@ def atualizar_apoios():
 st.markdown("<h1 style='text-align: center; color: #C0C0C0;'>STRUCTURAL CALCULATOR - FURG</h1>",
             unsafe_allow_html=True)
 st.image("https://www.furg.br/arquivos/logo-furg.png", width=100)
-st.image("https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTmz3bTUgaU5raqIVmyc_30uahw7JlLHNYgSQ&s", width=100)
+st.write("Devs: Lizandro Almeida de Oliveira Farias")
+st.write("Orientador: Carlos Hernandorena Viegas")
 st.subheader("Qual tipo de estrutura você quer calcular?")
 st.image(
     image='https://static.vecteezy.com/system/resources/thumbnails/059/935/806/small/structural-truss-design-a-detailed-3d-model-of-a-metal-framework-for-engineering-and-architect-png.png',
     width=150
 )
-st.write("Devs: Lizandro Almeida de Oliveira Farias - FURG")
-st.write("Orientador: Carlos Hernandorena Viegas")
-
 if st.button("Treliça 2D"):
     st.session_state["trelica_ativa"] = True
 
@@ -558,3 +556,4 @@ if st.session_state["trelica_ativa"]:
                         except Exception as e:
 
                             st.error(f"Erro no cálculo: {str(e)}")
+
