@@ -6,7 +6,6 @@ from matplotlib.colors import Normalize
 from matplotlib import cm
 import io
 
-# Inicialização do session_state
 if "nos" not in st.session_state:
     st.session_state["nos"] = []
 if "num_nos" not in st.session_state:
@@ -56,21 +55,13 @@ def atualizar_apoios():
         for i in range(st.session_state["num_apoios"])]
 
 def resolver_viga(comprimento, apoios, cargas):
-    """
-    Resolve uma viga isostática e retorna reações, esforço cortante e momento fletor
-    """
-    # Número de pontos para discretização
     n_points = 1000
     x = np.linspace(0, comprimento, n_points)
     
-    # Inicializar arrays
-    V = np.zeros(n_points)  # Esforço cortante
-    M = np.zeros(n_points)  # Momento fletor
+    V = np.zeros(n_points)
+    M = np.zeros(n_points)
     
-    # Calcular reações de apoio
-    # Para viga com 2 apoios
     if len(apoios) == 2:
-        # Somatório de momentos em relação ao primeiro apoio
         sum_momentos = 0
         sum_forcas_vert = 0
         
@@ -79,7 +70,6 @@ def resolver_viga(comprimento, apoios, cargas):
                 sum_momentos += carga['intensidade'] * carga['posicao']
                 sum_forcas_vert += carga['intensidade']
             elif carga['tipo'] == 'distribuida':
-                # Para carga distribuída uniforme
                 if carga['int_inicial'] == carga['int_final']:
                     intensidade = carga['int_inicial']
                     comp_carga = carga['posic_final'] - carga['posic_inicial']
@@ -87,43 +77,33 @@ def resolver_viga(comprimento, apoios, cargas):
                     sum_momentos += intensidade * comp_carga * pos_centro
                     sum_forcas_vert += intensidade * comp_carga
         
-        # Reação no segundo apoio
         R2 = sum_momentos / comprimento
-        # Reação no primeiro apoio
         R1 = sum_forcas_vert - R2
         
         reacoes = [R1, R2]
         
-        # Calcular esforço cortante e momento fletor
         for i, pos in enumerate(x):
-            # Esforço cortante
             V[i] = R1
             
-            # Subtrair forças à esquerda da posição atual
             for carga in cargas:
                 if carga['tipo'] == 'pontual' and carga['posicao'] <= pos:
                     V[i] -= carga['intensidade']
                 elif carga['tipo'] == 'distribuida':
                     if carga['posic_final'] <= pos:
-                        # Carga totalmente à esquerda
                         if carga['int_inicial'] == carga['int_final']:
                             V[i] -= carga['int_inicial'] * (carga['posic_final'] - carga['posic_inicial'])
                     elif carga['posic_inicial'] <= pos:
-                        # Carga parcialmente à esquerda
                         if carga['int_inicial'] == carga['int_final']:
                             V[i] -= carga['int_inicial'] * (pos - carga['posic_inicial'])
             
-            # Momento fletor (integral do cortante)
             if i > 0:
                 M[i] = M[i-1] + (V[i] + V[i-1]) / 2 * (x[i] - x[i-1])
     
-    # Para viga em balanço (1 apoio)
     elif len(apoios) == 1:
         apoio_pos = apoios[0]
         R1 = 0
         M_apoio = 0
         
-        # Calcular reação e momento no apoio
         for carga in cargas:
             if carga['tipo'] == 'pontual':
                 distancia = carga['posicao'] - apoio_pos
@@ -140,13 +120,11 @@ def resolver_viga(comprimento, apoios, cargas):
         
         reacoes = [R1]
         
-        # Calcular esforço cortante e momento fletor
         for i, pos in enumerate(x):
             if pos >= apoio_pos:
                 V[i] = R1
                 M[i] = -M_apoio
                 
-                # Subtrair forças entre apoio e posição atual
                 for carga in cargas:
                     if carga['tipo'] == 'pontual' and apoio_pos <= carga['posicao'] <= pos:
                         V[i] -= carga['intensidade']
@@ -160,43 +138,217 @@ def resolver_viga(comprimento, apoios, cargas):
     
     return reacoes, V, M, x
 
+def desenhar_viga(comprimento, apoios, cargas, unidade):
+    fig, ax = plt.subplots(figsize=(12, 5))
+    
+    ax.plot([0, comprimento], [0, 0], 'k-', linewidth=4, label='Viga')
+    
+    ax.set_xlim(-0.2, comprimento + 0.2)
+    ax.set_ylim(-1, 1)
+    ax.set_aspect('auto')
+    ax.grid(True, alpha=0.3)
+    ax.set_title('REPRESENTAÇÃO DA VIGA', fontsize=14, fontweight='bold')
+    ax.set_xlabel('Comprimento (m)', fontweight='bold')
+    ax.set_ylabel('', fontweight='bold')
+    ax.tick_params(axis='y', which='both', left=False, labelleft=False)
+    
+    escala_cargas = 0.5
+    
+    for i, apoio_pos in enumerate(apoios):
+        if len(apoios) == 1:
+            triangle = plt.Polygon([[apoio_pos-0.3, -0.5], 
+                                   [apoio_pos+0.3, -0.5], 
+                                   [apoio_pos, 0]], 
+                                   color='darkgreen', alpha=0.8)
+            ax.add_patch(triangle)
+            rect = plt.Rectangle((apoio_pos-0.35, -0.5), 0.7, 0.1, 
+                                color='gray', alpha=0.6)
+            ax.add_patch(rect)
+            ax.text(apoio_pos, -0.7, f'ENGASTE', 
+                   ha='center', va='top', fontweight='bold', 
+                   fontsize=10, bbox=dict(boxstyle="round,pad=0.3", 
+                                         facecolor="lightgreen", 
+                                         alpha=0.8))
+        else:
+            triangle = plt.Polygon([[apoio_pos-0.2, -0.4], 
+                                   [apoio_pos+0.2, -0.4], 
+                                   [apoio_pos, 0]], 
+                                   color='darkred', alpha=0.8)
+            ax.add_patch(triangle)
+            
+            for j in range(3):
+                circle = plt.Circle((apoio_pos - 0.1 + j*0.1, -0.45), 
+                                   0.03, color='black', alpha=0.5)
+                ax.add_patch(circle)
+            
+            ax.text(apoio_pos, -0.6, f'Apoio {i+1}', 
+                   ha='center', va='top', fontweight='bold', 
+                   fontsize=10, bbox=dict(boxstyle="round,pad=0.3", 
+                                         facecolor="lightcoral", 
+                                         alpha=0.8))
+    
+    for i, carga in enumerate(cargas):
+        if carga['tipo'] == 'pontual':
+            pos = carga['posicao']
+            intensidade = carga['intensidade']
+            
+            cor_carga = 'blue' if intensidade > 0 else 'darkblue'
+            
+            altura_seta = 0.8 * escala_cargas * min(1, abs(intensidade)/50)
+            
+            if intensidade > 0:
+                ax.arrow(pos, 0, 0, altura_seta, 
+                        head_width=0.15, head_length=0.15, 
+                        fc=cor_carga, ec=cor_carga, 
+                        linewidth=3, alpha=0.8)
+                ax.text(pos, altura_seta + 0.05, 
+                       f'{abs(intensidade):.1f} {unidade}', 
+                       ha='center', va='bottom', fontweight='bold',
+                       bbox=dict(boxstyle="round,pad=0.2", 
+                                facecolor="lightblue", 
+                                alpha=0.8))
+            else:
+                ax.arrow(pos, 0, 0, -altura_seta, 
+                        head_width=0.15, head_length=0.15, 
+                        fc=cor_carga, ec=cor_carga, 
+                        linewidth=3, alpha=0.8)
+                ax.text(pos, -altura_seta - 0.05, 
+                       f'{abs(intensidade):.1f} {unidade}', 
+                       ha='center', va='top', fontweight='bold',
+                       bbox=dict(boxstyle="round,pad=0.2", 
+                                facecolor="lightblue", 
+                                alpha=0.8))
+            
+            ax.axvline(x=pos, color='gray', linestyle=':', 
+                      alpha=0.5, linewidth=1)
+            
+            ax.plot(pos, 0, 'ro', markersize=8, alpha=0.7)
+    
+    for i, carga in enumerate(cargas):
+        if carga['tipo'] == 'distribuida':
+            x_inicio = carga['posic_inicial']
+            x_fim = carga['posic_final']
+            int_inicio = carga['int_inicial']
+            int_fim = carga['int_final']
+            
+            if int_inicio == int_fim:
+                altura = 0.6 * escala_cargas * min(1, abs(int_inicio)/20)
+                
+                ax.hlines(y=altura, xmin=x_inicio, xmax=x_fim, 
+                         color='purple', linewidth=3, alpha=0.8)
+                
+                num_setas = min(8, int((x_fim - x_inicio) / 0.5))
+                if num_setas > 0:
+                    for j in range(num_setas):
+                        x_pos = x_inicio + (x_fim - x_inicio) * (j + 0.5) / num_setas
+                        ax.arrow(x_pos, altura, 0, -altura, 
+                                head_width=0.08, head_length=0.08,
+                                fc='purple', ec='purple', 
+                                linewidth=2, alpha=0.7)
+                
+                ax.text((x_inicio + x_fim)/2, altura + 0.05, 
+                       f'{abs(int_inicio):.1f} {unidade}/m', 
+                       ha='center', va='bottom', fontweight='bold',
+                       bbox=dict(boxstyle="round,pad=0.2", 
+                                facecolor="lavender", 
+                                alpha=0.8))
+                
+                ax.fill_between([x_inicio, x_fim], 0, altura, 
+                               alpha=0.1, color='purple')
+            
+            else:
+                x = np.linspace(x_inicio, x_fim, 50)
+                y_max = max(abs(int_inicio), abs(int_fim))
+                y_norm = np.linspace(int_inicio, int_fim, 50) / y_max * 0.6 * escala_cargas
+                
+                ax.fill_between(x, 0, y_norm, alpha=0.2, color='orange')
+                
+                for pos, intens in [(x_inicio, int_inicio), 
+                                   ((x_inicio + x_fim)/2, (int_inicio + int_fim)/2), 
+                                   (x_fim, int_fim)]:
+                    altura = abs(intens) / y_max * 0.6 * escala_cargas
+                    if intens > 0:
+                        ax.arrow(pos, altura, 0, -altura, 
+                                head_width=0.08, head_length=0.08,
+                                fc='orange', ec='orange')
+                    else:
+                        ax.arrow(pos, 0, 0, altura, 
+                                head_width=0.08, head_length=0.08,
+                                fc='orange', ec='orange')
+                
+                ax.text((x_inicio + x_fim)/2, 0.4 * escala_cargas, 
+                       f'Carga variável\n{int_inicio:.1f} → {int_fim:.1f} {unidade}/m', 
+                       ha='center', va='center', fontweight='bold',
+                       bbox=dict(boxstyle="round,pad=0.3", 
+                                facecolor="wheat", 
+                                alpha=0.8))
+    
+    return fig
+
 def plotar_diagramas_viga(comprimento, apoios, cargas, reacoes, V, M, x, unidade):
-    """Plota os diagramas de esforço cortante e momento fletor"""
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10))
     
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
-    
-    # Diagrama de Esforço Cortante
-    ax1.plot(x, V, 'b-', linewidth=2, label='Esforço Cortante')
+    ax1.plot(x, V, 'b-', linewidth=3, label='Esforço Cortante')
     ax1.fill_between(x, V, alpha=0.3, color='blue')
     ax1.axhline(y=0, color='k', linestyle='-', alpha=0.3)
     ax1.set_ylabel(f'Cortante ({unidade})', fontsize=12, fontweight='bold')
     ax1.set_title('DIAGRAMA DE ESFORÇO CORTANTE', fontsize=14, fontweight='bold')
     ax1.grid(True, alpha=0.3)
-    ax1.legend()
+    ax1.legend(loc='upper right')
     
-    # Diagrama de Momento Fletor
-    ax2.plot(x, M, 'r-', linewidth=2, label='Momento Fletor')
+    for apoio in apoios:
+        ax1.axvline(x=apoio, color='green', linestyle='--', 
+                   alpha=0.7, linewidth=2)
+        ax1.text(apoio, ax1.get_ylim()[1]*0.9, f'Apoio', 
+                ha='center', va='top', fontweight='bold',
+                bbox=dict(boxstyle="round,pad=0.2", 
+                         facecolor="lightgreen", 
+                         alpha=0.8))
+    
+    for carga in cargas:
+        if carga['tipo'] == 'pontual':
+            ax1.axvline(x=carga['posicao'], color='orange', 
+                       linestyle=':', alpha=0.7, linewidth=2)
+            ax1.text(carga['posicao'], ax1.get_ylim()[0]*0.9, 
+                    f'Carga: {carga["intensidade"]:.1f} {unidade}', 
+                    ha='center', va='bottom', fontweight='bold',
+                    bbox=dict(boxstyle="round,pad=0.2", 
+                             facecolor="lightyellow", 
+                             alpha=0.8))
+    
+    ax2.plot(x, M, 'r-', linewidth=3, label='Momento Fletor')
     ax2.fill_between(x, M, alpha=0.3, color='red')
     ax2.axhline(y=0, color='k', linestyle='-', alpha=0.3)
     ax2.set_ylabel(f'Momento ({unidade}·m)', fontsize=12, fontweight='bold')
     ax2.set_xlabel('Posição ao longo da viga (m)', fontsize=12, fontweight='bold')
     ax2.set_title('DIAGRAMA DE MOMENTO FLETOR', fontsize=14, fontweight='bold')
     ax2.grid(True, alpha=0.3)
-    ax2.legend()
+    ax2.legend(loc='upper right')
     
-    # Adicionar apoios
     for apoio in apoios:
-        ax1.axvline(x=apoio, color='g', linestyle='--', alpha=0.7, label='Apoio')
-        ax2.axvline(x=apoio, color='g', linestyle='--', alpha=0.7, label='Apoio')
+        ax2.axvline(x=apoio, color='green', linestyle='--', 
+                   alpha=0.7, linewidth=2)
     
-    # Adicionar cargas
     for carga in cargas:
         if carga['tipo'] == 'pontual':
-            ax1.axvline(x=carga['posicao'], color='orange', linestyle=':', alpha=0.7)
-            ax2.axvline(x=carga['posicao'], color='orange', linestyle=':', alpha=0.7)
+            ax2.axvline(x=carga['posicao'], color='orange', 
+                       linestyle=':', alpha=0.7, linewidth=2)
         elif carga['tipo'] == 'distribuida':
-            ax1.axvspan(carga['posic_inicial'], carga['posic_final'], alpha=0.2, color='orange')
-            ax2.axvspan(carga['posic_inicial'], carga['posic_final'], alpha=0.2, color='orange')
+            ax2.axvspan(carga['posic_inicial'], carga['posic_final'], 
+                       alpha=0.1, color='orange')
+    
+    V_max = np.max(np.abs(V))
+    M_max = np.max(np.abs(M))
+    
+    ax1.text(0.02, 0.98, f'Cortante máximo: {V_max:.2f} {unidade}', 
+            transform=ax1.transAxes, fontsize=10, 
+            verticalalignment='top',
+            bbox=dict(boxstyle="round,pad=0.3", facecolor="yellow", alpha=0.5))
+    
+    ax2.text(0.02, 0.98, f'Momento máximo: {M_max:.2f} {unidade}·m', 
+            transform=ax2.transAxes, fontsize=10, 
+            verticalalignment='top',
+            bbox=dict(boxstyle="round,pad=0.3", facecolor="yellow", alpha=0.5))
     
     plt.tight_layout()
     return fig
@@ -220,70 +372,6 @@ if st.button("Cálculo de Vigas: Diagramas"):
     st.session_state["viga_ativa"] = True
     st.session_state["trelica_ativa"] = False
 
-# SEÇÃO TRELIÇA (mantida igual)
-if st.session_state["trelica_ativa"]:
-    st.subheader("CÁLCULO DE TRELIÇAS 2D: DETERMINAÇÃO DE REAÇÕES DE APOIO E FORÇAS INTERNAS")
-    st.write(
-        "Treliças são estruturas constituídas por barras ligadas entre si por nós articulados. "
-        "Cada uma das barras de uma treliça é responsável pela estabilidade da estrutura, "
-        "de forma que cada uma delas exerce esforços axiales."
-    )
-
-    st.subheader("DETERMINE AS UNIDADES DE MEDIDA! ")
-    if st.button("kilonewton(kN)", key="btn_kN"):
-        st.session_state["unidade"] = "kN"
-        st.success("unidade kN escolhida com sucesso! ")
-    if st.button("newton(N)", key="btn_N"):
-        st.session_state["unidade"] = "N"
-        st.success("unidade N escolhida com sucesso! ")
-
-    st.subheader("1) DETERMINAÇÃO DOS NÓS")
-    novo_num_nos = st.slider(
-        "Número de Nós",
-        min_value=2,
-        max_value=100,
-        value=st.session_state["num_nos"],
-        key="slider_num_nos"
-    )
-    if novo_num_nos != st.session_state["num_nos"]:
-        st.session_state["num_nos"] = novo_num_nos
-        atualizar_nos()
-        st.session_state["confirmar_nos"] = False
-
-    coordenadas_temp = []
-    for i in range(st.session_state["num_nos"]):
-        st.markdown(f"Nó {i + 1}")
-        col_1, col_2 = st.columns(2)
-        with col_1:
-            x = st.number_input(
-                f"Coordenada X do Nó {i + 1}",
-                value=float(st.session_state["nos"][i][0]) if i < len(st.session_state["nos"]) else 0.0,
-                key=f"x_input_{i}"
-            )
-        with col_2:
-            y = st.number_input(
-                f"Coordenada Y do Nó {i + 1}",
-                value=float(st.session_state["nos"][i][1]) if i < len(st.session_state["nos"]) else 0.0,
-                key=f"y_input_{i}"
-            )
-        coordenadas_temp.append((x, y))
-
-    if st.button("Confirmar coordenadas dos nós", key="confirmar_nos_btn"):
-        st.session_state["nos"] = coordenadas_temp
-        st.session_state["confirmar_nos"] = True
-        st.success("Todos os nós foram confirmados!")
-        st.rerun()
-        
-    if st.session_state["confirmar_nos"]:
-        df_nos = pd.DataFrame(st.session_state["nos"], columns=["X", "Y"])
-        df_nos.index = [f"Nó {i + 1}" for i in range(len(df_nos))]
-        st.write("Coordenadas dos Nós")
-        st.table(df_nos)
-
-        st.subheader("2) DETERMINAÇÃO DA DISPOSIÇÃO DAS BARRAS")
-        # ... (código da treliça mantido igual) ...
-
-# SEÇÃO VIGA
 if st.session_state["viga_ativa"]:
     st.subheader("CÁLCULO DE ESFORÇOS EM UMA VIGA ISOSTÁTICA: DETERMINAÇÃO DE REAÇÕES DE APOIO E DIAGRAMAS DE ESFORÇO CORTANTE E MOMENTO FLETOR")
     st.write("Uma viga é um elemento estrutural cujo sua principal função é resistir a cargas transversais, sendo fundamental para a estabilidade da estrutura de uma edificação.")
@@ -293,11 +381,11 @@ if st.session_state["viga_ativa"]:
     with col1:
         if st.button("kilonewton(kN)", key="btn_kN_viga"):
             st.session_state["unidade"] = "kN"
-            st.success("unidade kN escolhida com sucesso! ")
+            st.success("Unidade kN escolhida com sucesso! ")
     with col2:
         if st.button("newton(N)", key="btn_N_viga"):
             st.session_state["unidade"] = "N"
-            st.success("unidade N escolhida com sucesso!")
+            st.success("Unidade N escolhida com sucesso!")
         
     st.subheader("1) COMPRIMENTO DA VIGA")
     comp_viga = st.number_input("Qual o comprimento da viga? (metros)", 
@@ -315,11 +403,11 @@ if st.session_state["viga_ativa"]:
     
     apoios_viga_temp = []
     if num_apoios_viga == 1:
-        st.write("Posição do apoio único:")
-        apoio_pos = st.slider("Posição do apoio (m)", 0.0, float(comp_viga), 0.0, key="apoio_unico")
+        st.write("VIGA EM BALANÇO (ENGASTE ÚNICO)")
+        apoio_pos = st.slider("Posição do engaste (m)", 0.0, float(comp_viga), 0.0, key="apoio_unico")
         apoios_viga_temp.append(apoio_pos)
     else:
-        st.write("Posições dos apoios:")
+        st.write("VIGA BIAPOIADA")
         col1, col2 = st.columns(2)
         with col1:
             apoio1 = st.slider("Posição Apoio 1 (m)", 0.0, float(comp_viga), 0.0, key="apoio1")
@@ -336,9 +424,8 @@ if st.session_state["viga_ativa"]:
             
     st.subheader("3) DETERMINAÇÃO DAS CARGAS")
     
-    # Listar cargas existentes
     if st.session_state["cargas_viga"]:
-        st.write("**Cargas Adicionadas:**")
+        st.write("**CARGAS ADICIONADAS:**")
         dados_cargas = []
         for idx, carga in enumerate(st.session_state["cargas_viga"]):
             if carga['tipo'] == 'pontual':
@@ -365,39 +452,47 @@ if st.session_state["viga_ativa"]:
             st.success("Todas as cargas foram removidas!")
             st.rerun()
     
-    st.write("Adicionar nova carga:")
+    st.write("**ADICIONAR NOVA CARGA:**")
     tipo_carga = st.radio("Tipo de carga:", ["Pontual", "Distribuída"], key="tipo_carga")
     
     if tipo_carga == "Pontual":
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         with col1:
-            intensidade = st.number_input(f"Intensidade da carga ({st.session_state['unidade']})", 
+            intensidade = st.number_input(f"Intensidade ({st.session_state['unidade']})", 
                                         value=10.0, key="int_pontual")
         with col2:
-            posicao = st.slider("Posição da carga (m)", 0.0, float(comp_viga), 
+            direcao = st.selectbox("Direção", ["Para baixo (+)","Para cima (-)"], key="dir_pontual")
+        with col3:
+            posicao = st.slider("Posição (m)", 0.0, float(comp_viga), 
                                float(comp_viga)/2, key="pos_pontual")
         
         if st.button("Adicionar Carga Pontual", key="add_carga_pontual"):
+            intensidade_final = intensidade if direcao == "Para baixo (+)" else -intensidade
             st.session_state["cargas_viga"].append({
                 'tipo': 'pontual',
-                'intensidade': intensidade,
+                'intensidade': intensidade_final,
                 'posicao': posicao
             })
             st.success("Carga pontual adicionada!")
             st.rerun()
             
-    else:  # Carga distribuída
+    else:
         col1, col2 = st.columns(2)
         with col1:
             int_inicial = st.number_input(f"Intensidade inicial ({st.session_state['unidade']}/m)", 
                                         value=5.0, key="int_inicial")
+            direcao_inicial = st.selectbox("Direção inicial", ["Para baixo (+)","Para cima (-)"], key="dir_inicial")
             posic_inicial = st.slider("Posição inicial (m)", 0.0, float(comp_viga), 
                                     0.0, key="pos_inicial")
         with col2:
             int_final = st.number_input(f"Intensidade final ({st.session_state['unidade']}/m)", 
                                       value=5.0, key="int_final")
+            direcao_final = st.selectbox("Direção final", ["Para baixo (+)","Para cima (-)"], key="dir_final")
             posic_final = st.slider("Posição final (m)", 0.0, float(comp_viga), 
                                    float(comp_viga), key="pos_final")
+        
+        int_inicial_final = int_inicial if direcao_inicial == "Para baixo (+)" else -int_inicial
+        int_final_final = int_final if direcao_final == "Para baixo (+)" else -int_final
         
         if posic_inicial >= posic_final:
             st.error("Posição inicial deve ser menor que posição final!")
@@ -405,21 +500,31 @@ if st.session_state["viga_ativa"]:
             if st.button("Adicionar Carga Distribuída", key="add_carga_distribuida"):
                 st.session_state["cargas_viga"].append({
                     'tipo': 'distribuida',
-                    'int_inicial': int_inicial,
-                    'int_final': int_final,
+                    'int_inicial': int_inicial_final,
+                    'int_final': int_final_final,
                     'posic_inicial': posic_inicial,
                     'posic_final': posic_final
                 })
                 st.success("Carga distribuída adicionada!")
                 st.rerun()
     
-    # BOTÃO PARA RESOLVER VIGA
     if (st.session_state["apoios_viga"] and st.session_state["cargas_viga"] and 
         st.session_state["comp_viga"] > 0):
         
+        st.subheader("4) VISUALIZAÇÃO E CÁLCULO")
+        
+        st.write("**VISUALIZAÇÃO DA VIGA:**")
+        if st.session_state["apoios_viga"] and st.session_state["cargas_viga"]:
+            fig_viga = desenhar_viga(
+                st.session_state["comp_viga"],
+                st.session_state["apoios_viga"],
+                st.session_state["cargas_viga"],
+                st.session_state["unidade"]
+            )
+            st.pyplot(fig_viga)
+        
         if st.button("RESOLVER VIGA E GERAR DIAGRAMAS", key="resolver_viga_btn"):
             try:
-                # Resolver a viga
                 reacoes, V, M, x = resolver_viga(
                     st.session_state["comp_viga"],
                     st.session_state["apoios_viga"],
@@ -437,11 +542,9 @@ if st.session_state["viga_ativa"]:
             except Exception as e:
                 st.error(f"Erro ao resolver a viga: {str(e)}")
     
-    # MOSTRAR RESULTADOS
     if st.session_state["viga_resolvida"]:
         st.subheader("RESULTADOS DA ANÁLISE")
         
-        # Reações de apoio
         st.write("**REAÇÕES DE APOIO:**")
         dados_reacoes = []
         for i, reacao in enumerate(st.session_state["reacoes_viga"]):
@@ -452,7 +555,6 @@ if st.session_state["viga_ativa"]:
         df_reacoes = pd.DataFrame(dados_reacoes)
         st.table(df_reacoes)
         
-        # Valores máximos
         V_max = np.max(np.abs(st.session_state["cortante_viga"]))
         M_max = np.max(np.abs(st.session_state["momento_viga"]))
         
@@ -465,7 +567,6 @@ if st.session_state["viga_ativa"]:
             st.metric(f"Momento Fletor Máximo ({st.session_state['unidade']}·m)", 
                      f"{M_max:.3f}")
         
-        # Diagramas
         st.subheader("DIAGRAMAS DE ESFORÇOS")
         
         fig = plotar_diagramas_viga(
@@ -481,7 +582,6 @@ if st.session_state["viga_ativa"]:
         
         st.pyplot(fig)
         
-        # Tabela de valores em pontos específicos
         st.subheader("VALORES EM PONTOS ESPECÍFICOS")
         pontos_especificos = [0, st.session_state["comp_viga"]/4, st.session_state["comp_viga"]/2, 
                              3*st.session_state["comp_viga"]/4, st.session_state["comp_viga"]]
@@ -497,3 +597,15 @@ if st.session_state["viga_ativa"]:
         
         df_pontos = pd.DataFrame(dados_pontos)
         st.table(df_pontos)
+        
+        st.write("**OBSERVAÇÕES:**")
+        if len(st.session_state["apoios_viga"]) == 1:
+            st.info("Viga em balanço: O momento no engaste é máximo e negativo (tração nas fibras superiores).")
+        else:
+            st.info("Viga biapoiada: Os momentos nos apoios são nulos e o momento máximo ocorre no vão.")
+        
+        if st.button("NOVA ANÁLISE", key="nova_analise_btn"):
+            st.session_state["viga_resolvida"] = False
+            st.session_state["cargas_viga"] = []
+            st.session_state["apoios_viga"] = []
+            st.rerun()
